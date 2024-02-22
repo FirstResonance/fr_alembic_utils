@@ -19,7 +19,7 @@ class OnEntityMixin(_Base):
         else:
             schema = on_entity.split(".")[0]
         
-        if schema == "public":
+        if schema == "public" and "." in on_entity:
             on_entity = on_entity.split(".")[1]
 
         self.include_schema_prefix: bool = schema != "public"
