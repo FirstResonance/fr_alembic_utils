@@ -142,7 +142,8 @@ class PGTrigger(OnEntityMixin, ReplaceableEntity):
 
     def to_sql_statement_create_or_replace(self):
         """Generates a SQL "replace trigger" statement for PGTrigger"""
-        yield self.to_sql_statement_create().replace("CREATE ", "CREATE OR REPLACE ")
+        yield sql_text(f'DROP TRIGGER IF EXISTS "{self.signature}" ON {self.on_entity};')
+        yield self.to_sql_statement_create()
 
     @classmethod
     def from_database(cls, sess, schema):
