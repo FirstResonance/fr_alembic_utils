@@ -6,13 +6,19 @@ from typing import Generator
 from parse import parse
 from sqlalchemy import text as sql_text
 from sqlalchemy.sql.elements import TextClause
+from sqlalchemy.orm import Session
 
 from alembic_utils.exceptions import SQLParseFailure
 from alembic_utils.replaceable_entity import ReplaceableEntity
+from alembic_utils.simulate import simulate_entity
 from alembic_utils.statement import (
     coerce_to_unquoted,
     normalize_whitespace,
     strip_terminating_semicolon,
+)
+from typing import (
+    List,
+    Optional,
 )
 
 
@@ -60,7 +66,7 @@ class PGView(ReplaceableEntity):
     def to_sql_statement_drop(self, cascade=False) -> TextClause:
         """Generates a SQL "drop view" statement"""
         cascade = "cascade" if cascade else ""
-        return sql_text(f'DROP VIEW {self.literal_schema_prefix}"{self.signature}" {cascade}')
+        return sql_text(f'DROP VIEW {self.literal_schema_prefix}"{self.signature}" {cascade} ;')
 
     def to_sql_statement_create_or_replace(self) -> Generator[TextClause, None, None]:
         """Generates a SQL "create or replace view" statement
@@ -82,6 +88,28 @@ class PGView(ReplaceableEntity):
         $$ language 'plpgsql'
         """
         )
+
+    def get_database_definition(
+        self: "PGView", sess: Session, dependencies: Optional[List["ReplaceableEntity"]] = None
+    ) -> "PGView":
+        """Get the SQL-rendered state of this entiity"""
+        with simulate_entity(sess, self, dependencies) as sess:
+            sess.execute(next(self.to_sql_statement_create_or_replace()))
+            sql = sql_text("""
+                select
+                    schemaname schema_name,
+                    viewname view_name,
+                    definition
+                from
+                    pg_views
+                where
+                    schemaname not in ('pg_catalog', 'information_schema')
+                    and schemaname::text = :schema
+                    and viewname ilike :signature
+            """)
+            info_row = sess.execute(sql, {"schema": self.schema, "signature": self.signature}).first()
+            return PGView.from_sql(f"create view {self.schema}.{self.signature} as \n{info_row[2]}")
+
 
     @classmethod
     def from_database(cls, sess, schema):

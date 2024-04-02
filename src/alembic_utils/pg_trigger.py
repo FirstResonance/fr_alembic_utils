@@ -2,10 +2,17 @@
 
 from parse import parse
 from sqlalchemy import text as sql_text
+from sqlalchemy.orm import Session
 
 from alembic_utils.exceptions import SQLParseFailure
 from alembic_utils.on_entity_mixin import OnEntityMixin
 from alembic_utils.replaceable_entity import ReplaceableEntity
+from alembic_utils.simulate import simulate_entity
+
+from typing import (
+    List,
+    Optional,
+)
 
 
 class PGTrigger(OnEntityMixin, ReplaceableEntity):
@@ -104,7 +111,7 @@ class PGTrigger(OnEntityMixin, ReplaceableEntity):
                 )
         raise SQLParseFailure(f'Failed to parse SQL into PGTrigger """{sql}"""')
 
-    def to_sql_statement_create(self):
+    def _to_sql_statement_create_str(self):
         """Generates a SQL "create trigger" statement for PGTrigger"""
 
         # We need to parse and replace the schema qualifier on the table for simulate_entity to
@@ -131,19 +138,48 @@ class PGTrigger(OnEntityMixin, ReplaceableEntity):
             event=event, on_entity=on_entity, action=action
         )
 
-        return sql_text(
-            f"CREATE{' CONSTRAINT ' if self.is_constraint else ' '}TRIGGER \"{self.signature}\" {def_rendered}"
-        )
+        return f"CREATE{' CONSTRAINT ' if self.is_constraint else ' '}TRIGGER \"{self.signature}\" {def_rendered}"
+        
+    
+    def to_sql_statement_create(self):
+        """Generates a SQL "create trigger" statement for PGTrigger"""
+        return sql_text(self._to_sql_statement_create_str())
+
 
     def to_sql_statement_drop(self, cascade=False):
         """Generates a SQL "drop trigger" statement for PGTrigger"""
         cascade = "cascade" if cascade else ""
-        return sql_text(f'DROP TRIGGER "{self.signature}" ON {self.on_entity} {cascade}')
+        return sql_text(f'DROP TRIGGER "{self.signature}" ON {self.on_entity} {cascade}; ')
 
     def to_sql_statement_create_or_replace(self):
         """Generates a SQL "replace trigger" statement for PGTrigger"""
-        yield sql_text(f'DROP TRIGGER IF EXISTS "{self.signature}" ON {self.on_entity};')
-        yield self.to_sql_statement_create()
+        yield sql_text(f'DROP TRIGGER IF EXISTS "{self.signature}" ON {self.on_entity};' + self._to_sql_statement_create_str())
+
+    def get_database_definition(
+        self: "PGTrigger", sess: Session, dependencies: Optional[List["ReplaceableEntity"]] = None
+    ) -> "PGTrigger":  # $Optional[T]:
+        """Get the SQL-rendered state of this entiity"""
+        with simulate_entity(sess, self, dependencies) as sess:
+            sess.execute(next(self.to_sql_statement_create_or_replace()))
+            sql = sql_text(
+                        """
+                    select
+                        pc.relnamespace::regnamespace::text as table_schema,
+                        tgname trigger_name,
+                        pg_get_triggerdef(pgt.oid) definition
+                    from
+                        pg_trigger pgt
+                            inner join pg_class pc
+                                on pgt.tgrelid = pc.oid
+                    where
+                        not tgisinternal
+                        and pc.relnamespace::regnamespace::text like :schema
+                        and tgname = :name
+                    """
+                    )
+            info_row = sess.execute(sql, {"schema": self.schema, "name": self.signature}).first()
+            return PGTrigger.from_sql(info_row[2])
+
 
     @classmethod
     def from_database(cls, sess, schema):
