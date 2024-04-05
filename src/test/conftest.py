@@ -17,6 +17,7 @@ from alembic_utils.replaceable_entity import registry
 from alembic_utils.testbase import TEST_VERSIONS_ROOT
 
 PYTEST_DB = "postgresql://alem_user:password@localhost:5610/alem_db"
+# PYTEST_DB = "postgresql://postgres:mysecretpassword@localhost:5432/alem_db"
 
 
 @pytest.fixture(scope="session")
@@ -46,7 +47,7 @@ def maybe_start_pg() -> Generator[None, None, None]:
             == "true"
         )
     except subprocess.CalledProcessError:
-        # Can't inspect container if it isn't running
+        # Can't inspect container if it isn't running        
         is_running = False
 
     if is_running:
@@ -111,8 +112,8 @@ def engine(raw_engine: Engine) -> Generator[Engine, None, None]:
     def run_cleaners():
         registry.clear()
         with raw_engine.begin() as connection:
-            connection.execute(text("drop schema public cascade; create schema public;"))
-            connection.execute(text("drop schema myschema cascade; create schema myschema;"))
+            connection.execute(text("drop schema if exists public cascade; create schema public;"))
+            connection.execute(text("drop schema if exists myschema cascade; create schema myschema;"))
             connection.execute(text('drop schema if exists "DEV" cascade; create schema "DEV";'))
             connection.execute(text('drop role if exists "anon_user"'))
         # Remove any migrations that were left behind

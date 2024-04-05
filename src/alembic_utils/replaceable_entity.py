@@ -102,7 +102,8 @@ class ReplaceableEntity:
         """Creates the entity in the database, retrieves its 'rendered' then rolls it back"""
         with simulate_entity(sess, self, dependencies) as sess:
             # Drop self
-            sess.execute(self.to_sql_statement_drop())
+            sess.execute(self.to_sql_statement_drop(cascade=True))
+            sess.flush()
 
             # collect all remaining entities
             db_entities: List[T] = sorted(

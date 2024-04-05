@@ -243,3 +243,45 @@ def test_plpgsql_colon_esacpe(engine) -> None:
     run_alembic_command(engine=engine, command="upgrade", command_kwargs={"revision": "head"})
     # Execute Downgrade
     run_alembic_command(engine=engine, command="downgrade", command_kwargs={"revision": "base"})
+
+
+def test_sql_function(engine) -> None:
+
+    SQL_FUNCTION = PGFunction(
+        schema="public",
+        signature="toUpper(some_text text default 'my text!')",
+        definition="""
+            returns text
+            language sql
+            as $$ 
+                select upper(some_text);
+            $$;
+            """,
+    )
+
+
+    with engine.begin() as connection:
+        connection.execute(SQL_FUNCTION.to_sql_statement_create())
+
+    register_entities([SQL_FUNCTION], entity_types=[PGFunction])
+
+    output = run_alembic_command(
+        engine=engine,
+        command="revision",
+        command_kwargs={"autogenerate": True, "rev_id": "3", "message": "do_nothing"},
+    )
+    migration_do_nothing_path = TEST_VERSIONS_ROOT / "3_do_nothing.py"
+
+    with migration_do_nothing_path.open() as migration_file:
+        migration_contents = migration_file.read()
+
+    assert "op.create_entity" not in migration_contents
+    assert "op.drop_entity" not in migration_contents
+    assert "op.replace_entity" not in migration_contents
+    assert "from alembic_utils" not in migration_contents
+
+    # Execute upgrade
+    run_alembic_command(engine=engine, command="upgrade", command_kwargs={"revision": "head"})
+    # Execute Downgrade
+    run_alembic_command(engine=engine, command="downgrade", command_kwargs={"revision": "base"})
+

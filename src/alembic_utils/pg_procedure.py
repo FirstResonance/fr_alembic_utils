@@ -1,16 +1,23 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 from typing import List
+import re
 
 from parse import parse
 from sqlalchemy import text as sql_text
+from sqlalchemy.orm import Session
 
 from alembic_utils.exceptions import SQLParseFailure
 from alembic_utils.replaceable_entity import ReplaceableEntity
+from alembic_utils.simulate import simulate_entity
 from alembic_utils.statement import (
     escape_colon_for_plpgsql,
     escape_colon_for_sql,
     normalize_whitespace,
     strip_terminating_semicolon,
+)
+from typing import (
+    List,
+    Optional,
 )
 
 
@@ -98,7 +105,7 @@ class PGProcedure(ReplaceableEntity):
         parameters = [x.strip() for x in parameters]
         drop_params = ", ".join(parameters)
         return sql_text(
-            f'DROP PROCEDURE {self.literal_schema_prefix}"{procedure_name}"({drop_params}) {cascade}'
+            f'DROP PROCEDURE {self.literal_schema_prefix}"{procedure_name}"({drop_params}) {cascade} ;'
         )
 
     def to_sql_statement_create_or_replace(self):
@@ -106,6 +113,45 @@ class PGProcedure(ReplaceableEntity):
         yield sql_text(
             f"CREATE OR REPLACE PROCEDURE {self.literal_schema_prefix}{self.literal_signature} {self.definition}"
         )
+
+    def get_database_definition(
+        self: "PGProcedure", sess: Session, dependencies: Optional[List["ReplaceableEntity"]] = None
+    ) -> "PGProcedure":  
+        """Get the SQL-rendered state of this entiity"""
+        with simulate_entity(sess, self, dependencies) as sess:
+            sess.execute(next(self.to_sql_statement_create_or_replace()))
+            sql = sql_text("""
+                    select
+                        n.nspname as function_schema,
+                        p.proname as function_name,
+                        pg_get_function_arguments(p.oid) as function_arguments,
+                        case
+                            when l.lanname = 'internal' then p.prosrc
+                            else pg_get_functiondef(p.oid)
+                        end as create_statement,
+                        t.typname as return_type,
+                        l.lanname as function_language
+                    from
+                        pg_proc p
+                        left join pg_namespace n on p.pronamespace = n.oid
+                        left join pg_language l on p.prolang = l.oid
+                        left join pg_type t on t.oid = p.prorettype
+                    where n.nspname = :schema
+                        and concat(p.proname, '(',  pg_catalog.pg_get_function_identity_arguments(p.oid), ')') ilike :signature
+                    """)
+            # Replace parameter types with % because type names change to the canonical ones.
+            simplified_signature: str = re.sub(r" +[^,\) ]+ *(?=[,\)])", " %", self.signature, flags=re.IGNORECASE)
+            # Remove spaces after opening parenthesis.
+            simplified_signature = re.sub(r"(?<=\() *(\w+)(?= )", r"\1", simplified_signature, flags=re.IGNORECASE)
+            # Make sure there's a single space after each comma.
+            simplified_signature = re.sub(r", *(\w+)(?= )", r", \1", simplified_signature, flags=re.IGNORECASE)
+            # Add a % to represent IN/OUT/INOUT keyword.
+            simplified_signature = re.sub(r"(?<=[(?:, )|(?:\()])(\w+)", r"% \1", simplified_signature, flags=re.IGNORECASE)
+            # Truncate name to 63 characters
+            simplified_signature = re.sub(r"^(\w{63})\w+", r"\1", simplified_signature, flags=re.IGNORECASE)
+            info_row = sess.execute(sql, {"schema": self.schema, "signature": simplified_signature}).first()
+            return PGProcedure.from_sql(info_row[3])
+
 
     @classmethod
     def from_database(cls, sess, schema):
@@ -172,3 +218,4 @@ class PGProcedure(ReplaceableEntity):
             assert func is not None
 
         return db_procedures
+ 
