@@ -1,5 +1,6 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 from typing import List
+import os
 
 from parse import parse
 from sqlalchemy import text as sql_text
@@ -12,6 +13,9 @@ from alembic_utils.statement import (
     normalize_whitespace,
     strip_terminating_semicolon,
 )
+
+
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
 
 
 class PGProcedure(ReplaceableEntity):
@@ -49,6 +53,8 @@ class PGProcedure(ReplaceableEntity):
                 # remove possible quotes from signature
                 raw_signature = result["signature"]
                 schema = result.named.get("schema", "public")
+                if NEVER_INCLUDE_SCHEMA:
+                    schema = "public"
                 signature = (
                     "".join(raw_signature.split('"', 2))
                     if raw_signature.startswith('"')

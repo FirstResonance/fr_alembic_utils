@@ -1,6 +1,6 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 
-
+import os
 from typing import Generator
 
 from parse import parse
@@ -14,6 +14,9 @@ from alembic_utils.statement import (
     normalize_whitespace,
     strip_terminating_semicolon,
 )
+
+
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
 
 
 class PGMaterializedView(ReplaceableEntity):
@@ -33,6 +36,8 @@ class PGMaterializedView(ReplaceableEntity):
     type_ = "materialized_view"
 
     def __init__(self, signature: str, definition: str, schema: str = "public", with_data: bool = True):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
         self.schema: str = coerce_to_unquoted(normalize_whitespace(schema))
         self.signature: str = coerce_to_unquoted(normalize_whitespace(signature))
         self.definition: str = strip_terminating_semicolon(definition)
@@ -67,8 +72,12 @@ class PGMaterializedView(ReplaceableEntity):
                 # If the signature includes column e.g. my_view (col1, col2, col3) remove them
                 signature = result["signature"].split("(")[0]
 
+                schema = result.named.get("schema", "public")
+                if NEVER_INCLUDE_SCHEMA:
+                    schema = "public"
+
                 return cls(
-                    schema=result.named.get("schema", "public"),
+                    schema=schema,
                     # strip quote characters
                     signature=signature.replace('"', ""),
                     definition=result["definition"],

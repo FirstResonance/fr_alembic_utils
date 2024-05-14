@@ -1,4 +1,5 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
+import os
 from typing import List
 
 from parse import parse
@@ -12,6 +13,9 @@ from alembic_utils.statement import (
     normalize_whitespace,
     strip_terminating_semicolon,
 )
+
+
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
 
 
 class PGFunction(ReplaceableEntity):
@@ -49,6 +53,8 @@ class PGFunction(ReplaceableEntity):
                 # remove possible quotes from signature
                 raw_signature = result["signature"]
                 schema = result.named.get("schema") or "public"
+                if NEVER_INCLUDE_SCHEMA:
+                    schema = "public"
                 signature = (
                     "".join(raw_signature.split('"', 2))
                     if raw_signature.startswith('"')

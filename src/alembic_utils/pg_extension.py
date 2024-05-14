@@ -1,6 +1,6 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 
-
+import os
 from typing import Generator
 
 from sqlalchemy import text as sql_text
@@ -8,6 +8,9 @@ from sqlalchemy.sql.elements import TextClause
 
 from alembic_utils.replaceable_entity import ReplaceableEntity
 from alembic_utils.statement import coerce_to_unquoted, normalize_whitespace
+
+
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
 
 
 class PGExtension(ReplaceableEntity):
@@ -22,6 +25,9 @@ class PGExtension(ReplaceableEntity):
     type_ = "extension"
 
     def __init__(self, signature: str, schema: str = "public"):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
+
         self.schema: str = coerce_to_unquoted(normalize_whitespace(schema))
         self.signature: str = coerce_to_unquoted(normalize_whitespace(signature))
         # Include schema in definition since extensions can only exist once per

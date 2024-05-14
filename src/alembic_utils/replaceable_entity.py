@@ -1,5 +1,6 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 import logging
+import os
 from itertools import zip_longest
 from pathlib import Path
 from typing import (
@@ -42,10 +43,15 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound="ReplaceableEntity")
 
 
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
+
+
 class ReplaceableEntity:
     """A SQL Entity that can be replaced"""
 
     def __init__(self, signature: str, definition: str, schema: str = "public"):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
         self.schema: str = coerce_to_unquoted(normalize_whitespace(schema))
         self.signature: str = coerce_to_unquoted(normalize_whitespace(signature))
         self.definition: str = escape_colon_for_sql(strip_terminating_semicolon(definition))
