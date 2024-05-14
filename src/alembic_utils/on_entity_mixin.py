@@ -56,8 +56,9 @@ class OnEntityMixin(_Base):
         schema_name = self.schema.lower() + "_" if self.schema and self.include_schema_prefix else ""
         object_name = self.signature.split("(")[0].strip().lower()
         unqualified_entity_name = (
-            self.on_entity.lower().split(".") 
+            "_".join(self.on_entity.lower().split("."))
             if "." in self.on_entity 
             else self.on_entity.lower()
         )
+        assert isinstance(unqualified_entity_name, str)
         return f"{schema_name}{unqualified_entity_name}_{object_name}"
