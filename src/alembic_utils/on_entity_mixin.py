@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
+RENDER_DEF_MULTILINE = os.environ.get("RENDER_DEF_MULTILINE", "false").lower() in {"true", "1"}
 
 
 class OnEntityMixin(_Base):
@@ -59,7 +60,10 @@ class OnEntityMixin(_Base):
             code += f'\n    schema="{self.schema}",'
         code += f'\n    signature="{self.signature}",'
         code += f'\n    on_entity="{self.on_entity}",'
-        code += f'\n    definition={repr(escaped_definition)},'
+        if RENDER_DEF_MULTILINE:
+            code += f'\n    definition="""\n{escaped_definition}""",'
+        else:
+            code += f'\n    definition={repr(escaped_definition)},'
         code += '\n)\n'
         return code
 

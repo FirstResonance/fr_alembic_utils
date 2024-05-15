@@ -10,6 +10,7 @@ from alembic_utils.replaceable_entity import ReplaceableEntity
 
 
 NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
+RENDER_DEF_MULTILINE = os.environ.get("RENDER_DEF_MULTILINE", "false").lower() in {"true", "1"}
 
 
 class PGTrigger(OnEntityMixin, ReplaceableEntity):
@@ -69,7 +70,10 @@ class PGTrigger(OnEntityMixin, ReplaceableEntity):
         code += f'\n    signature="{self.signature}",'
         code += f'\n    on_entity="{self.on_entity}",'
         code += f'\n    is_constraint={self.is_constraint},'
-        code += f'\n    definition={repr(escaped_definition)},'
+        if RENDER_DEF_MULTILINE:
+            code += f'\n    definition="""\n{escaped_definition}""",'
+        else:
+            code += f'\n    definition={repr(escaped_definition)},'
         code += '\n)\n'
         return code
 

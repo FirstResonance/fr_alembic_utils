@@ -44,6 +44,7 @@ T = TypeVar("T", bound="ReplaceableEntity")
 
 
 NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
+RENDER_DEF_MULTILINE = os.environ.get("RENDER_DEF_MULTILINE", "false").lower() in {"true", "1"}
 
 
 class ReplaceableEntity:
@@ -149,7 +150,10 @@ class ReplaceableEntity:
 
         code: str = f"{var_name} = {class_name}("
         for key, value in arg_to_value.items():
-            code += f"\n    {key}={repr(value)},"
+            if key == "definition" and RENDER_DEF_MULTILINE:
+                code += f'\n    {key}="""\n{value}""",'
+            else:
+                code += f"\n    {key}={repr(value)},"
         code += '\n)\n'
         return code
 
