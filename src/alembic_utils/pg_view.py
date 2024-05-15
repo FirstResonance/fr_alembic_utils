@@ -1,6 +1,6 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 
-
+import os
 from typing import Generator
 
 from parse import parse
@@ -16,6 +16,9 @@ from alembic_utils.statement import (
 )
 
 
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
+
+
 class PGView(ReplaceableEntity):
     """A PostgreSQL View compatible with `alembic revision --autogenerate`
 
@@ -29,6 +32,8 @@ class PGView(ReplaceableEntity):
     type_ = "view"
 
     def __init__(self, signature: str, definition: str, schema: str = "public"):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
         self.schema: str = coerce_to_unquoted(normalize_whitespace(schema))
         self.signature: str = coerce_to_unquoted(normalize_whitespace(signature))
         self.definition: str = strip_terminating_semicolon(definition)
@@ -40,10 +45,13 @@ class PGView(ReplaceableEntity):
         template = "create{}view{:s}{schema}.{signature}{:s}as{:s}{definition}"
         result = parse(template, sql, case_sensitive=False)
         if result is not None:
+            schema = result["schema"]
+            if NEVER_INCLUDE_SCHEMA:
+                schema = "public"
             # If the signature includes column e.g. my_view (col1, col2, col3) remove them
             signature = result["signature"].split("(")[0]
             return cls(
-                schema=result["schema"],
+                schema=schema,
                 # strip quote characters
                 signature=signature.replace('"', ""),
                 definition=strip_terminating_semicolon(result["definition"]),

@@ -1,5 +1,6 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 import logging
+import os
 from itertools import zip_longest
 from pathlib import Path
 from typing import (
@@ -42,10 +43,15 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound="ReplaceableEntity")
 
 
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
+
+
 class ReplaceableEntity:
     """A SQL Entity that can be replaced"""
 
     def __init__(self, signature: str, definition: str, schema: str = "public"):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
         self.schema: str = coerce_to_unquoted(normalize_whitespace(schema))
         self.signature: str = coerce_to_unquoted(normalize_whitespace(signature))
         self.definition: str = escape_colon_for_sql(strip_terminating_semicolon(definition))
@@ -122,17 +128,28 @@ class ReplaceableEntity:
 
         raise UnreachableException()
 
-    def render_self_for_migration(self, omit_definition=False) -> str:
+    def render_self_for_migration(self, omit_definition=False, *, arg_to_value=None) -> str:
         """Render a string that is valid python code to reconstruct self in a migration"""
         var_name = self.to_variable_name()
         class_name = self.__class__.__name__
         escaped_definition = self.definition if not omit_definition else "# not required for op"
 
-        code: str = f"{var_name} = {class_name}("
+        if arg_to_value is None:
+            arg_to_value = {}
+
+        arg_to_value.update(
+            {
+                "signature": self.signature,
+                "definition": escaped_definition,
+            }
+        )
+
         if self.schema and self.include_schema_prefix:
-            code += f'\n    schema="{self.schema}",'
-        code += f'\n    signature="{self.signature}",'
-        code += f'\n    definition={repr(escaped_definition)},'
+            arg_to_value["schema"] = self.schema
+
+        code: str = f"{var_name} = {class_name}("
+        for key, value in arg_to_value.items():
+            code += f"\n    {key}={repr(value)},"
         code += '\n)\n'
         return code
 

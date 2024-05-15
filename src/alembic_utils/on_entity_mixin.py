@@ -1,4 +1,6 @@
+import logging
 from typing import TYPE_CHECKING
+import os
 
 from alembic_utils.statement import coerce_to_unquoted
 
@@ -10,19 +12,29 @@ else:
     _Base = object
 
 
+logger = logging.getLogger(__name__)
+
+
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
+
+
 class OnEntityMixin(_Base):
     """Mixin to ReplaceableEntity providing setup for entity types requiring an "ON" clause"""
 
     def __init__(self, signature: str, definition: str, on_entity: str, schema: str = "public"):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
+
         if "." not in on_entity:
             schema = "public"
         else:
             schema = on_entity.split(".")[0]
-        
+
         if schema == "public" and "." in on_entity:
             on_entity = on_entity.split(".")[1]
 
         self.include_schema_prefix: bool = schema != "public"
+
         super().__init__(schema=schema, signature=signature, definition=definition)
 
         # Guarenteed to have a schema
@@ -56,8 +68,9 @@ class OnEntityMixin(_Base):
         schema_name = self.schema.lower() + "_" if self.schema and self.include_schema_prefix else ""
         object_name = self.signature.split("(")[0].strip().lower()
         unqualified_entity_name = (
-            self.on_entity.lower().split(".") 
+            "_".join(self.on_entity.lower().split("."))
             if "." in self.on_entity 
             else self.on_entity.lower()
         )
+        assert isinstance(unqualified_entity_name, str)
         return f"{schema_name}{unqualified_entity_name}_{object_name}"

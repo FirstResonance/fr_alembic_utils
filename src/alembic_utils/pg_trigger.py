@@ -1,11 +1,15 @@
 # pylint: disable=unused-argument,invalid-name,line-too-long
 
+import os
 from parse import parse
 from sqlalchemy import text as sql_text
 
 from alembic_utils.exceptions import SQLParseFailure
 from alembic_utils.on_entity_mixin import OnEntityMixin
 from alembic_utils.replaceable_entity import ReplaceableEntity
+
+
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
 
 
 class PGTrigger(OnEntityMixin, ReplaceableEntity):
@@ -45,6 +49,8 @@ class PGTrigger(OnEntityMixin, ReplaceableEntity):
         schema: str = "public",
         is_constraint: bool = False,
     ):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
         self.include_schema_prefix: bool = schema != "public"
         super().__init__(
             signature=signature, definition=definition, schema=schema, on_entity=on_entity,
@@ -89,6 +95,11 @@ class PGTrigger(OnEntityMixin, ReplaceableEntity):
                     schema = "public"
                 else:
                     schema = on_entity.split(".")[0]
+                
+                if NEVER_INCLUDE_SCHEMA:
+                    schema = "public"
+                    if "." in on_entity:
+                        on_entity = on_entity.split(".", 1)[1]
 
                 definition_template = " {event} ON {on_entity} {action}"
                 definition = definition_template.format(

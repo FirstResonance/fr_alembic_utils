@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
+import logging
+import os
 from typing import Generator, List, Optional, Union
 
 from flupy import flu
@@ -10,6 +12,12 @@ from sqlalchemy.sql.elements import TextClause
 from alembic_utils.exceptions import BadInputException
 from alembic_utils.replaceable_entity import ReplaceableEntity
 from alembic_utils.statement import coerce_to_quoted, coerce_to_unquoted
+
+
+logger = logging.getLogger(__name__)
+
+
+NEVER_INCLUDE_SCHEMA = os.environ.get("NEVER_INCLUDE_SCHEMA", "false").lower() in {"true", "1"}
 
 
 class PGGrantTableChoice(str, Enum):
@@ -80,6 +88,8 @@ class PGGrantTable(ReplaceableEntity):
         columns: Optional[List[str]] = None,
         with_grant_option=False,
     ):
+        if NEVER_INCLUDE_SCHEMA:
+            schema = "public"
         self.schema: str = coerce_to_unquoted(schema)
         self.table: str = coerce_to_unquoted(table)
         self.columns: List[str] = sorted(columns) if columns else []
@@ -121,7 +131,9 @@ class PGGrantTable(ReplaceableEntity):
         schema_name = self.schema.lower() + "_" if self.schema and self.include_schema_prefix else ""
         table_name = self.table.lower()
         role_name = self.role.lower()
-        return f"{schema_name}{table_name}_{role_name}_{str(self.grant)}".lower()
+        result = f"{schema_name}{table_name}_{role_name}_{str(self.grant)}".lower()
+        logger.info("Generated variable name %s", result)
+        return result
 
     def render_self_for_migration(self, omit_definition=False) -> str:
         """Render a string that is valid python code to reconstruct self in a migration"""
